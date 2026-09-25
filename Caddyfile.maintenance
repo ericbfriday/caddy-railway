@@ -1,0 +1,15 @@
+{
+	auto_https off
+	admin off
+	persist_config off
+}
+
+:{$PORT:8080} {
+	header Cache-Control "no-store"
+	handle /healthz {
+		respond "ok" 200
+	}
+	handle {
+		respond "Setup pending" 503
+	}
+}

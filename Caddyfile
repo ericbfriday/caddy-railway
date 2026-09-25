@@ -19,10 +19,12 @@
 			uri /api/authz/forward-auth
 			header_up X-Forwarded-Proto https
 		}
-		reverse_proxy https://{$TAILSCALE_HOST}:443 {
+		reverse_proxy https://{$HERMES_TAILSCALE_HOST}:443 {
 			transport http {
 				network_proxy url {$TAILSCALE_PROXY_URL}
+				versions 1.1
 			}
+			header_up Host {$HERMES_HOST}
 			header_up X-Forwarded-Proto https
 		}
 	}
@@ -33,10 +35,12 @@
 			uri /api/authz/forward-auth
 			header_up X-Forwarded-Proto https
 		}
-		reverse_proxy https://{$TAILSCALE_HOST}:8443 {
+		reverse_proxy https://{$COMFY_TAILSCALE_HOST}:443 {
 			transport http {
 				network_proxy url {$TAILSCALE_PROXY_URL}
+				versions 1.1
 			}
+			header_up Host {$COMFY_HOST}
 			header_up X-Forwarded-Proto https
 		}
 	}
