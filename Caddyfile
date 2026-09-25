@@ -18,6 +18,10 @@
 	@auth host {$AUTH_HOST}
 	handle @auth {
 		reverse_proxy {$AUTHELIA_UPSTREAM} {
+			# Railway supplies the original client address in X-Real-IP. Authelia
+			# binds one-time codes to that address, so do not pass Caddy's
+			# changing Railway edge peer as X-Forwarded-For.
+			header_up X-Forwarded-For {http.request.header.X-Real-IP}
 			header_up X-Forwarded-Proto https
 		}
 	}
@@ -26,6 +30,7 @@
 	handle @hermes {
 		forward_auth {$AUTHELIA_UPSTREAM} {
 			uri /api/authz/forward-auth
+			header_up X-Forwarded-For {http.request.header.X-Real-IP}
 			header_up X-Forwarded-Proto https
 		}
 		reverse_proxy https://{$HERMES_TAILSCALE_HOST}:443 {
@@ -42,6 +47,7 @@
 	handle @comfy {
 		forward_auth {$AUTHELIA_UPSTREAM} {
 			uri /api/authz/forward-auth
+			header_up X-Forwarded-For {http.request.header.X-Real-IP}
 			header_up X-Forwarded-Proto https
 		}
 		reverse_proxy https://{$COMFY_TAILSCALE_HOST}:443 {
