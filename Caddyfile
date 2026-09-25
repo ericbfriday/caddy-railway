@@ -13,6 +13,15 @@
 		respond "ok" 200
 	}
 
+	# Railway's single wildcard domain lands all three hosts here. The portal
+	# stays on the private Railway network and is exposed only on AUTH_HOST.
+	@auth host {$AUTH_HOST}
+	handle @auth {
+		reverse_proxy {$AUTHELIA_UPSTREAM} {
+			header_up X-Forwarded-Proto https
+		}
+	}
+
 	@hermes host {$HERMES_HOST}
 	handle @hermes {
 		forward_auth {$AUTHELIA_UPSTREAM} {

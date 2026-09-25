@@ -10,7 +10,7 @@ Browser -> Railway TLS -> this Caddy service -> Authelia (Railway private networ
 
 ## What this repository provides
 
-- Routes `HERMES_HOST` and `COMFY_HOST` to separate private Tailscale Service hostnames, each on HTTPS port 443.
+- Routes `AUTH_HOST` to the private Authelia service and `HERMES_HOST` and `COMFY_HOST` to separate private Tailscale Service hostnames, each on HTTPS port 443.
 - Requires Authelia `forward_auth` before every app request. If Authelia fails, the app proxy does not run.
 - Returns 404 for the Railway-generated URL and unknown hosts. `/healthz` is the only public route that skips authentication.
 - Uses Caddy's built-in `encode zstd gzip`, HTTP streaming, WebSocket proxying, and HTTP network proxy transport. No Caddy plugin is needed. The experimental Tailscale Caddy plugin crashed during configuration validation, so this deployment uses the [official Tailscale container](https://tailscale.com/docs/features/containers/docker/docker-params) in userspace mode as a separate private Railway service.
@@ -25,12 +25,13 @@ The previous VPS plan's public DNS, TLS, and edge host steps are replaced by Rai
 
 ## Deploy the Caddy service
 
-Connect this fork's branch or merged `main` to the existing Railway Caddy service in **Settings → Source**. If it is still tied to the template, use Railway's **Eject** action as described in the [Caddy Railway guide](https://caddyserver.com/docs/quick-starts/railway), then point the service at this fork. Set the service's public target port to `8080`, or set `PORT` and the target port to the same value. Remove the template's `CADDY_PLUGINS` variable; this image uses stock Caddy 2.11.4.
+Connect this fork's branch or merged `main` to the existing Railway Caddy service in **Settings → Source**. If it is still tied to the template, use Railway's **Eject** action as described in the [Caddy Railway guide](https://caddyserver.com/docs/quick-starts/railway), then point the service at this fork. Confirm the next build log uses `FROM caddy:2.11.4-alpine` and does not run `build.sh` or `xcaddy`; those identify the original template source. Set the service's public target port to `8080`, or set `PORT` and the target port to the same value. Remove the template's `CADDY_PLUGINS` variable; this image uses stock Caddy 2.11.4. The repository's `railway.json` explicitly selects its root Dockerfile.
 
 Set these Railway variables on the Caddy service:
 
 | Variable | Example | Purpose |
 | --- | --- | --- |
+| `AUTH_HOST` | `auth.loon.day` | Public Authelia portal hostname, without scheme |
 | `HERMES_HOST` | `hermes.loon.day` | Public Hermes hostname, without scheme |
 | `COMFY_HOST` | `comfy.loon.day` | Public ComfyUI hostname, without scheme |
 | `HERMES_TAILSCALE_HOST` | `hermes.<tailnet>.ts.net` | Private Hermes Service hostname, without scheme or port |
@@ -39,9 +40,9 @@ Set these Railway variables on the Caddy service:
 | `AUTHELIA_UPSTREAM` | `authelia.railway.internal:9091` | Authelia service's private Railway address and port |
 | `PORT` | `8080` | Optional; must match Railway's target port |
 
-If a required variable is missing or both app hostnames are equal, the container starts in setup mode: `/healthz` returns 200 so Railway can deploy, and every other path returns 503. The startup log lists missing variable names but never their values. Once all required variables are set and the service redeploys, Caddy enables the protected app routes. A healthy `/healthz` confirms only that Caddy is listening; it does **not** prove Authelia or the Windows workstation is reachable.
+If a required variable is missing or any two public hostnames are equal, the container starts in setup mode: `/healthz` returns 200 so Railway can deploy, and every other path returns 503. The startup log lists missing variable names but never their values. Once all required variables are set and the service redeploys, Caddy enables the portal and protected app routes. A healthy `/healthz` confirms only that Caddy is listening; it does **not** prove Authelia or the Windows workstation is reachable.
 
-Configure the separate Authelia service's public portal at `auth.loon.day` and its session cookie domain for `loon.day`. Configure Authelia's access policy to require a second factor for both app domains. Keep its internal port private to Railway. The Authelia portal itself needs a public Railway domain so an unauthenticated browser can sign in.
+Configure the separate Authelia service's public portal URL as `https://auth.loon.day` and its session cookie domain for `loon.day`. Configure Authelia's access policy to require a second factor for both app domains. Keep its internal port private to Railway; Caddy publishes the portal on `AUTH_HOST`.
 
 ## Deploy the private Tailscale proxy service
 
@@ -78,7 +79,7 @@ Hermes checks the HTTP Host and WebSocket Origin values. Configure `dashboard.pu
 
 ## Custom domains and DNS
 
-Attach `hermes.loon.day` and `comfy.loon.day` to this Caddy service in Railway. Attach `auth.loon.day` to the Authelia service. Railway Hobby permits two custom domains per service, which is why the portal uses its own service. For each hostname, copy the exact **CNAME and ownership-verification TXT** records Railway provides into Vercel DNS, then wait for Railway verification and certificates. The current public A records for these subdomains point to a Tailscale `100.x` address; replace them with Railway's records before testing from an off-tailnet browser. [Railway custom-domain instructions](https://docs.railway.com/networking/domains/working-with-domains)
+Attach **one** custom domain, `*.loon.day`, to the Caddy service in Railway, targeting port `8080`. Do not add a public domain to the Authelia service. Railway supports wildcard custom domains, so this covers `auth.loon.day`, `hermes.loon.day`, and `comfy.loon.day` with one domain slot. In Vercel DNS, add the exact wildcard CNAME, `_acme-challenge` CNAME, and ownership-verification TXT records Railway displays. This is a DNS configuration on a Vercel-managed domain, not an instruction to add `*.loon.day` to a Vercel-hosted project. Remove the existing explicit `auth`, `hermes`, and `comfy` A records pointing to a Tailscale `100.x` address, since those would take precedence over the wildcard DNS record. Wait for Railway verification and certificates before testing from an off-tailnet browser. Caddy returns 404 for any unrecognized subdomain. [Railway wildcard-domain instructions](https://docs.railway.com/networking/domains/working-with-domains)
 
 ## Acceptance checks before public use
 
@@ -93,7 +94,7 @@ Local config check after `docker build -t caddy-railway:local .`:
 
 ```powershell
 docker run --rm --entrypoint caddy `
-  -e HERMES_HOST=hermes.loon.day -e COMFY_HOST=comfy.loon.day `
+  -e AUTH_HOST=auth.loon.day -e HERMES_HOST=hermes.loon.day -e COMFY_HOST=comfy.loon.day `
   -e HERMES_TAILSCALE_HOST=hermes.example.ts.net `
   -e COMFY_TAILSCALE_HOST=comfyui.example.ts.net `
   -e AUTHELIA_UPSTREAM=authelia.railway.internal:9091 `
