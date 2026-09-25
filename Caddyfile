@@ -33,7 +33,7 @@
 			header_up X-Forwarded-For {http.request.header.X-Real-IP}
 			header_up X-Forwarded-Proto https
 		}
-		reverse_proxy https://{$HERMES_TAILSCALE_HOST}:443 {
+		reverse_proxy https://{$HERMES_TAILSCALE_HOST}:{$HERMES_TAILSCALE_PORT:443} {
 			transport http {
 				network_proxy url {$TAILSCALE_PROXY_URL}
 				versions 1.1
@@ -50,7 +50,7 @@
 			header_up X-Forwarded-For {http.request.header.X-Real-IP}
 			header_up X-Forwarded-Proto https
 		}
-		reverse_proxy https://{$COMFY_TAILSCALE_HOST}:443 {
+		reverse_proxy https://{$COMFY_TAILSCALE_HOST}:{$COMFY_TAILSCALE_PORT:443} {
 			transport http {
 				network_proxy url {$TAILSCALE_PROXY_URL}
 				versions 1.1
