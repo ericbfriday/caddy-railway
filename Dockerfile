@@ -1,12 +1,5 @@
-FROM caddy:builder AS builder
+FROM caddy:2.11.4-alpine
 
-ARG CADDY_PLUGINS=
-
-COPY --chmod=755 build.sh /build.sh
-RUN sh /build.sh
-
-FROM caddy:alpine
-
-COPY --from=builder /usr/local/bin/caddy-custom /usr/bin/caddy
-COPY ./www /www
-COPY ./Caddyfile /etc/caddy/Caddyfile
+COPY --chmod=755 entrypoint.sh /entrypoint.sh
+COPY Caddyfile /etc/caddy/Caddyfile
+ENTRYPOINT ["/entrypoint.sh"]

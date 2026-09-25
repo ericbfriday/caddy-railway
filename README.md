@@ -1,60 +1,97 @@
-Caddy on Railway
-================
+# Railway edge for Hermes Agent and ComfyUI
 
-The official template used to deploy Caddy on [Railway](https://railway.com).
+This fork adapts the [official Caddy Railway template](https://caddyserver.com/docs/quick-starts/railway) for two public, authenticated app subdomains. Railway terminates browser HTTPS. Caddy checks each request with Authelia, then reaches the Windows workstation through a private Tailscale connection. The home router does not need a port forward.
 
-## How to use
+```text
+Browser -> Railway TLS -> this Caddy service -> Authelia (Railway private network)
+                                            -> Tailscale proxy (Railway private network)
+                                            -> Windows Serve -> local Caddy -> Hermes / ComfyUI
+```
 
-Click this button:
+## What this repository provides
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/caddy?referralCode=YOPtw9&utm_medium=integration&utm_source=template&utm_campaign=generic)
+- Routes `HERMES_HOST` to the workstation's private Serve HTTPS port 443 and `COMFY_HOST` to port 8443.
+- Requires Authelia `forward_auth` before every app request. If Authelia fails, the app proxy does not run.
+- Returns 404 for the Railway-generated URL and unknown hosts. `/healthz` is the only public route that skips authentication.
+- Uses Caddy's built-in `encode zstd gzip`, HTTP streaming, WebSocket proxying, and HTTP network proxy transport. No Caddy plugin is needed. The experimental Tailscale Caddy plugin crashed during configuration validation, so this deployment uses the [official Tailscale container](https://tailscale.com/docs/features/containers/docker/docker-params) in userspace mode as a separate private Railway service.
 
-Then on the page that opens, click **Deploy Now**:
+The previous VPS plan's public DNS, TLS, and edge host steps are replaced by Railway. Its private Windows Serve routes and MFA requirements still apply.
 
-<img width="1242" height="331" alt="Click Deploy Now" src="https://github.com/user-attachments/assets/d7978bed-e6bc-49bf-b110-e04114fec1b2" />
+## Prerequisites
 
-You are then brought to this screen, where you can customize your deployment first:
+1. A Railway project with this Caddy service and a separate Authelia service. Use persistent Authelia storage and configure a user, TOTP or WebAuthn, recovery codes, and session cookies for your chosen domain. Do not place Authelia secrets or user database in this repository. See the [Authelia Caddy integration](https://www.authelia.com/integration/proxies/caddy/).
+2. Tailscale MagicDNS and HTTPS enabled for the Windows workstation. Give the Railway Tailscale service an ephemeral auth key or OAuth client secret that can register `tag:railway-edge`; add tailnet grants allowing that tag to reach **only** the workstation's Serve ports 443 and 8443. Keep the key in Railway variables, never in Git. See [Tailscale grants](https://tailscale.com/docs/features/access-control/grants).
+3. Hermes Agent and ComfyUI listening locally on the Windows workstation, with a local Caddy bridge as in [`examples/windows-Caddyfile`](examples/windows-Caddyfile). Adjust ports if needed. Do not expose those application ports on the LAN or internet.
 
-<img width="650" alt="Deployment screen" src="https://github.com/user-attachments/assets/7f12c51f-f712-416e-9d05-a5cac52af789" />
+## Deploy the Caddy service
 
-If you want to add any plugins, click "Configure" and paste the Go module names of plugins you want to include, separated by spaces, for example:
+Connect this fork's branch or merged `main` to the existing Railway Caddy service in **Settings → Source**. If it is still tied to the template, use Railway's **Eject** action as described in the [Caddy Railway guide](https://caddyserver.com/docs/quick-starts/railway), then point the service at this fork. Set the service's public target port to `8080`, or set `PORT` and the target port to the same value. Remove the template's `CADDY_PLUGINS` variable; this image uses stock Caddy 2.11.4.
 
-<img width="650" alt="Adding plugins" src="https://github.com/user-attachments/assets/3fcce427-7ca2-42a2-982f-d6addfbbb576" />
+Set these Railway variables on the Caddy service:
 
-(You can see known available plugins on our [Download page](https://caddyserver.com/download).)
+| Variable | Example | Purpose |
+| --- | --- | --- |
+| `HERMES_HOST` | `hermes.example.com` | Public Hermes hostname, without scheme |
+| `COMFY_HOST` | `comfy.example.com` | Public ComfyUI hostname, without scheme |
+| `TAILSCALE_HOST` | `workstation.tailnet-name.ts.net` | Windows Tailscale HTTPS hostname, without scheme or port |
+| `TAILSCALE_PROXY_URL` | `http://tailscale.railway.internal:1055` | Internal URL of the Tailscale service's outbound HTTP proxy |
+| `AUTHELIA_UPSTREAM` | `authelia.railway.internal:9091` | Authelia service's private Railway address and port |
+| `PORT` | `8080` | Optional; must match Railway's target port |
 
-Make sure you hit "Save Config" before deploying.
+The container refuses to start if a required variable is missing or both app hostnames are equal. It exposes `/healthz` for Railway's health check; that check confirms Caddy is listening, **not** that Authelia or the Windows workstation is healthy.
 
-Once it finishes deploying, you can visit it at its URL by clicking the link at this spot:
+Configure the separate Authelia service's public portal at `auth.example.com` and its session cookie domain for the same parent domain as the two apps. Configure Authelia's access policy to require a second factor for both app domains. Keep its internal port private to Railway. The Authelia portal itself needs a public Railway domain so an unauthenticated browser can sign in.
 
-<img width="525" height="211" alt="Example project link" src="https://github.com/user-attachments/assets/9211fc52-052f-471f-bba5-960c3e343a9b" />
+## Deploy the private Tailscale proxy service
 
-You should see a welcome page at that URL, something like this (may change from time of writing):
+Add another Railway service in the **same project and environment**, using the official `tailscale/tailscale:v1.102.2` Docker image. Do not add a public domain or TCP proxy. Name it `tailscale` so its internal DNS name is `tailscale.railway.internal`, or update `TAILSCALE_PROXY_URL` accordingly. Set these variables on that service:
 
-<img width="1240" height="561" alt="Welcome page" src="https://github.com/user-attachments/assets/872b231e-c7cc-4fa4-9640-792aeedae8d3" />
+| Variable | Value | Purpose |
+| --- | --- | --- |
+| `TS_AUTHKEY` | Railway secret | Ephemeral auth key or OAuth client secret |
+| `TS_EXTRA_ARGS` | `--advertise-tags=tag:railway-edge` | Stable identity for tailnet grants |
+| `TS_ACCEPT_DNS` | `true` | Accept tailnet DNS settings for the workstation hostname |
+| `TS_USERSPACE` | `true` | No TUN device or privileged container needed |
+| `TS_OUTBOUND_HTTP_PROXY_LISTEN` | `:1055` | Caddy connects through Railway private networking |
+| `TS_HOSTNAME` | `railway-edge` | Recognizable tailnet node name |
 
-Congrats, it worked! Caddy has been deployed on Railway.
+Use an **ephemeral** credential because Railway's container filesystem is not persistent. The official image supports this userspace HTTP proxy mode. If you later attach a Railway volume, you may instead persist Tailscale state and use `TS_AUTH_ONCE=true`. The proxy port must remain private to this Railway project; it has no per-request authentication of its own. [Tailscale userspace networking](https://tailscale.com/docs/concepts/userspace-networking), [Railway private networking](https://docs.railway.com/networking/domains/working-with-domains)
 
-## Customizing
+## Windows private backhaul
 
-At this point, you probably want to customize your deployment. Usually you will either serve your own static site, or proxy to another service on Railway. To do either, you'll need to "eject" the template into your own repository so you can change the config.
+Run the local bridge only on loopback. Adapt the example Caddyfile and verify Hermes and ComfyUI locally, then configure private Tailscale Serve:
 
-### Custom Caddy config
+```powershell
+tailscale serve --bg --https=443 127.0.0.1:9081
+tailscale serve --bg --https=8443 127.0.0.1:9082
+tailscale serve status
+```
 
-Go to the Caddy service in Railway and under Settings → Upstream Repo, click "Eject":
+Confirm `serve status` shows both routes as **private Serve**, not Funnel. Test both `https://<TAILSCALE_HOST>` and `https://<TAILSCALE_HOST>:8443` from an allowed tailnet device with normal certificate verification. A disallowed tailnet device and an ordinary internet client must be unable to reach them directly.
 
-<img width="752" height="765" alt="Eject to customize" src="https://github.com/user-attachments/assets/2bc1aa46-8eb8-4ba7-85b2-ab51a79669a0" />
+## Custom domains and DNS
 
-This copies the template into your own repository to which you can then makes changes and push.
+Attach `hermes.example.com` and `comfy.example.com` to this Caddy service in Railway. Attach `auth.example.com` to the Authelia service. Railway Hobby permits two custom domains per service, which is why the portal uses its own service. For each hostname, copy the exact **CNAME and ownership-verification TXT** records Railway provides into Vercel DNS, then wait for Railway verification and certificates. Do not use the old VPS plan's A/AAAA records or point DNS to the home IP. [Railway custom-domain instructions](https://docs.railway.com/networking/domains/working-with-domains)
 
-### Change Caddy plugins
+## Acceptance checks before public use
 
-This is as easy as editing the `CADDY_PLUGINS` variable and redeploying:
+1. Build and validate the image locally with placeholder variables (see below).
+2. Test `GET /healthz` and verify unknown Host returns 404.
+3. With no Authelia session, request each app's `/`, API, assets, and ComfyUI `/ws`; none may reach the workstation. Test Authelia outage and confirm the apps remain inaccessible.
+4. Sign in with the intended account and second factor. Verify Hermes HTTP/API and ComfyUI pages, WebSockets, uploads, and image downloads from an off-tailnet browser. Verify any Hermes origin or WebSocket host checks with the public hostname.
+5. Verify valid Railway certificates on all three subdomains and normal TLS validation on both `*.ts.net` backhaul ports.
+6. Check Railway's [public networking limits](https://docs.railway.com/networking/public-networking/specs-and-limits) against ComfyUI uploads and long running generations. Avoid a caching plugin for private images and prompts.
 
-<img width="1180" height="660" alt="Screenshot_20260310_120014" src="https://github.com/user-attachments/assets/55044a4a-f975-4411-bf26-f8419052c42b" />
+Local config check after `docker build -t caddy-railway:local .`:
 
-## Variables
+```powershell
+docker run --rm --entrypoint caddy `
+  -e HERMES_HOST=hermes.example.com -e COMFY_HOST=comfy.example.com `
+  -e TAILSCALE_HOST=workstation.example.ts.net `
+  -e AUTHELIA_UPSTREAM=authelia.railway.internal:9091 `
+  -e TAILSCALE_PROXY_URL=http://tailscale.railway.internal:1055 `
+  caddy-railway:local `
+  adapt --config /etc/caddy/Caddyfile --adapter caddyfile --validate
+```
 
-The following variables can be used with this template:
-
-- **`CADDY_PLUGINS`** The list of Caddy plugins, separated by whitespace. For example: `github.com/caddy-dns/cloudflare github.com/mholt/caddy-ratelimit` will add the Cloudflare DNS provider and a rate limiting handler.
+Use a real auth key only in Railway, not in a shell command retained in terminal history.

@@ -1,0 +1,10 @@
+# Serve forwards private tailnet HTTPS to these loopback-only HTTP listeners.
+:9081 {
+	bind 127.0.0.1
+	reverse_proxy 127.0.0.1:9119
+}
+
+:9082 {
+	bind 127.0.0.1
+	reverse_proxy 127.0.0.1:8188
+}
