@@ -2,7 +2,7 @@
 set -eu
 
 missing=
-for name in HERMES_HOST COMFY_HOST HERMES_TAILSCALE_HOST COMFY_TAILSCALE_HOST TAILSCALE_PROXY_URL AUTHELIA_UPSTREAM; do
+for name in AUTH_HOST HERMES_HOST COMFY_HOST HERMES_TAILSCALE_HOST COMFY_TAILSCALE_HOST TAILSCALE_PROXY_URL AUTHELIA_UPSTREAM; do
     eval "value=\${$name-}"
     if [ -z "$value" ]; then
         missing="$missing $name"
@@ -14,8 +14,8 @@ if [ -n "$missing" ]; then
     exec caddy run --config /etc/caddy/Caddyfile.maintenance --adapter caddyfile
 fi
 
-if [ "$HERMES_HOST" = "$COMFY_HOST" ]; then
-    echo "Setup pending; HERMES_HOST and COMFY_HOST must differ" >&2
+if [ "$AUTH_HOST" = "$HERMES_HOST" ] || [ "$AUTH_HOST" = "$COMFY_HOST" ] || [ "$HERMES_HOST" = "$COMFY_HOST" ]; then
+    echo "Setup pending; AUTH_HOST, HERMES_HOST, and COMFY_HOST must differ" >&2
     exec caddy run --config /etc/caddy/Caddyfile.maintenance --adapter caddyfile
 fi
 
