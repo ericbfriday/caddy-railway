@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-for name in HERMES_HOST COMFY_HOST TAILSCALE_HOST TAILSCALE_PROXY_URL AUTHELIA_UPSTREAM; do
+for name in HERMES_HOST COMFY_HOST HERMES_TAILSCALE_HOST COMFY_TAILSCALE_HOST TAILSCALE_PROXY_URL AUTHELIA_UPSTREAM; do
     eval "value=\${$name-}"
     if [ -z "$value" ]; then
         echo "Missing required environment variable: $name" >&2
