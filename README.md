@@ -39,7 +39,7 @@ Set these Railway variables on the Caddy service:
 | `AUTHELIA_UPSTREAM` | `authelia.railway.internal:9091` | Authelia service's private Railway address and port |
 | `PORT` | `8080` | Optional; must match Railway's target port |
 
-The container refuses to start if a required variable is missing or both app hostnames are equal. It exposes `/healthz` for Railway's health check; that check confirms Caddy is listening, **not** that Authelia or the Windows workstation is healthy.
+If a required variable is missing or both app hostnames are equal, the container starts in setup mode: `/healthz` returns 200 so Railway can deploy, and every other path returns 503. The startup log lists missing variable names but never their values. Once all required variables are set and the service redeploys, Caddy enables the protected app routes. A healthy `/healthz` confirms only that Caddy is listening; it does **not** prove Authelia or the Windows workstation is reachable.
 
 Configure the separate Authelia service's public portal at `auth.loon.day` and its session cookie domain for `loon.day`. Configure Authelia's access policy to require a second factor for both app domains. Keep its internal port private to Railway. The Authelia portal itself needs a public Railway domain so an unauthenticated browser can sign in.
 
