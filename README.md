@@ -58,6 +58,18 @@ Add another Railway service in the **same project and environment**, using the o
 
 Use an **ephemeral** credential because Railway's container filesystem is not persistent. The official image supports this userspace HTTP proxy mode. If you later attach a Railway volume, you may instead persist Tailscale state and use `TS_AUTH_ONCE=true`. The proxy port must remain private to this Railway project; it has no per-request authentication of its own. [Tailscale userspace networking](https://tailscale.com/docs/concepts/userspace-networking), [Railway private networking](https://docs.railway.com/networking/domains/working-with-domains)
 
+Merge a narrow grant into the existing tailnet policy after defining ownership of `tag:railway-edge` and checking for broader grants that would also match these services:
+
+```json
+{
+  "src": ["tag:railway-edge"],
+  "dst": ["svc:hermes", "svc:comfyui"],
+  "ip": ["tcp:443"]
+}
+```
+
+[Tailscale Services access controls](https://tailscale.com/docs/features/tailscale-services), [grants syntax](https://tailscale.com/docs/reference/syntax/grants)
+
 ## Windows private backhaul
 
 The Windows machine already hosts `svc:hermes` and `svc:comfyui` as private Tailscale Services. Confirm `tailscale serve status` shows both routes as **tailnet only**, not Funnel. Each service must proxy to a live local app port. Test `https://<HERMES_TAILSCALE_HOST>` and `https://<COMFY_TAILSCALE_HOST>` from an allowed tailnet device with normal certificate verification. A disallowed tailnet device and an ordinary internet client must be unable to reach them directly.
