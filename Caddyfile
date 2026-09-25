@@ -1,9 +1,48 @@
-# This is your Caddy configuration. This default config
-# opens a port and serves a static site from the www folder.
-# Edit this file according to your needs.
+{
+	# Railway terminates public TLS. This container only listens for Railway traffic.
+	auto_https off
+	admin off
+	persist_config off
+}
 
-# Remember, Railway terminates TLS before it gets to Caddy.
-:8080
+:{$PORT:8080} {
+	encode zstd gzip
 
-root /www
-file_server
+	# Railway's health check is the only unauthenticated path.
+	handle /healthz {
+		respond "ok" 200
+	}
+
+	@hermes host {$HERMES_HOST}
+	handle @hermes {
+		forward_auth {$AUTHELIA_UPSTREAM} {
+			uri /api/authz/forward-auth
+			header_up X-Forwarded-Proto https
+		}
+		reverse_proxy https://{$TAILSCALE_HOST}:443 {
+			transport http {
+				network_proxy url {$TAILSCALE_PROXY_URL}
+			}
+			header_up X-Forwarded-Proto https
+		}
+	}
+
+	@comfy host {$COMFY_HOST}
+	handle @comfy {
+		forward_auth {$AUTHELIA_UPSTREAM} {
+			uri /api/authz/forward-auth
+			header_up X-Forwarded-Proto https
+		}
+		reverse_proxy https://{$TAILSCALE_HOST}:8443 {
+			transport http {
+				network_proxy url {$TAILSCALE_PROXY_URL}
+			}
+			header_up X-Forwarded-Proto https
+		}
+	}
+
+	# The Railway-generated URL and unknown Host headers expose no app.
+	handle {
+		respond "not found" 404
+	}
+}
