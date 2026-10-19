@@ -1,0 +1,2 @@
+# Container entrypoints must remain executable by Linux /bin/sh after checkout.
+*.sh text eol=lf

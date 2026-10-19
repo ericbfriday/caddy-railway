@@ -8,19 +8,17 @@
 :{$PORT:8080} {
 	encode zstd gzip
 
-	# Railway's health check is the only unauthenticated path.
+	# Railway's health check is the only unauthenticated path outside the portal.
 	handle /healthz {
 		respond "ok" 200
 	}
 
-	# Railway's single wildcard domain lands all three hosts here. The portal
+	# Railway's wildcard domain publishes only the portal and Hermes. The portal
 	# stays on the private Railway network and is exposed only on AUTH_HOST.
 	@auth host {$AUTH_HOST}
 	handle @auth {
 		reverse_proxy {$AUTHELIA_UPSTREAM} {
-			# Railway supplies the original client address in X-Real-IP. Authelia
-			# binds one-time codes to that address, so do not pass Caddy's
-			# changing Railway edge peer as X-Forwarded-For.
+			# Preserve Railway's original client address for Authelia OTP binding.
 			header_up X-Forwarded-For {http.request.header.X-Real-IP}
 			header_up X-Forwarded-Proto https
 		}
@@ -39,23 +37,6 @@
 				versions 1.1
 			}
 			header_up Host {$HERMES_HOST}
-			header_up X-Forwarded-Proto https
-		}
-	}
-
-	@comfy host {$COMFY_HOST}
-	handle @comfy {
-		forward_auth {$AUTHELIA_UPSTREAM} {
-			uri /api/authz/forward-auth
-			header_up X-Forwarded-For {http.request.header.X-Real-IP}
-			header_up X-Forwarded-Proto https
-		}
-		reverse_proxy https://{$COMFY_TAILSCALE_HOST}:{$COMFY_TAILSCALE_PORT:443} {
-			transport http {
-				network_proxy url {$TAILSCALE_PROXY_URL}
-				versions 1.1
-			}
-			header_up Host {$COMFY_HOST}
 			header_up X-Forwarded-Proto https
 		}
 	}
